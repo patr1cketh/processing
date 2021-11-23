@@ -49,6 +49,6 @@ class ImpactMarker {
   }
 
   boolean inRange(int s, int e) {
-    return true;
+    return s <= this.year && this.year <= e;
   }
 }
