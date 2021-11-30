@@ -8,87 +8,74 @@ import uibooster.utils.*;
 import rita.*;
 
 Table movie_lines, movie_list; // declare tables
-UiBooster gui = new UiBooster(); // declare UiBooster
-
-JSONArray movie_data;
-
-ArrayList<String> movie_titles; // declare ArrayList
-
+ArrayList<String> movie_names, characters_array, lines; // declare ArrayLists
+StringList characters, characters_duplicates; // declare StringLists
 
 void setup() {
   size(960, 540);
-
+  
+  // load csv files into tables
   movie_list = loadTable("movie_titles_metadata_header.csv", "header");
-  movie_lines = loadTable("movie_lines_header.csv", "header");
-  movie_data = new JSONArray();
-  movie_titles = new ArrayList<>();
-  JSONObject movie = new JSONObject();
-  JSONObject character;
-  JSONArray characters = new JSONArray();
-  JSONArray lines_array;
-  StringList movie_ids = new StringList();
-  for (TableRow row : movie_list.rows()) movie_ids.append(row.getString("MovieID"));
-  StringList character_ids = new StringList();
-  StringList unique_ids = new StringList();
-  for (TableRow row : movie_lines.findRows(movie_ids.get(0), "MovieID")) character_ids.append(row.getString("CharacterID"));
-  for (String id : character_ids) if (!unique_ids.hasValue(id)) unique_ids.append(id);
- movie.setString("movieID", movie_ids.get(0));
- TableRow row = movie_list.findRow(movie_ids.get(0), "MovieID");
- movie.setString("movieName", row.getString("MovieName"));
- for (String id : unique_ids) {
-   character = new JSONObject();
-   character.setString("charcterID", id);
-   character.setString("characterName", movie_lines.findRow(id, "CharacterID").getString("CharacterName"));
-   lines_array = new JSONArray();
-   for (TableRow r : movie_lines.findRows(id, "CharacterID")) lines_array.append(r.getString("MovieLine"));
-   character.setJSONArray("lines", lines_array);
-   characters.append(character);
- }
- movie.setJSONArray("characters", characters);
- movie_data.append(movie);
- saveJSONArray(movie_data, "movie_data.json");
+  movie_lines = loadTable("movie_lines_header.csv", "header");  
   
+  // add all the movie names to an ArrayList
+  movie_names = new ArrayList<>();
+  for (TableRow movie_row : movie_list.rows()) movie_names.add(movie_row.getString("MovieName"));    
   
-  //for (TableRow row : movie_list.rows()) {
-  //  JSONObject movie = new JSONObject();
-  //  StringList unique_character_ids = new StringList();
-  //  movie.setString("movieID", row.getString("MovieID")); // get MovieID from table row and add it to movie object
-  //  movie.setString("movieName", row.getString("MovieName")); // add MovieName
-  //  String[] character_ids = {};
-  //  JSONObject character = new JSONObject();
-  //  JSONArray lines = new JSONArray();
-  //  for (TableRow row_2 : movie_lines.findRows(row.getString("MovieID"), "MovieID")) { // loop through all rows that have a matching movieID
-  //     character_ids = append(character_ids, row_2.getString("CharacterID")); // append all the character ids
-  //     for (final String id : character_ids) if (!unique_character_ids.hasValue(id)) unique_character_ids.append(id); // extract all the unique values          
-  //     for (String id : unique_character_ids) {        
-  //       character.setString("characterID", id);
-  //       character.setString("characterName", movie_lines.findRow(id, "CharacterID").getString("CharacterName"));         
-  //       for (TableRow row_3 : movie_lines.findRows((id), "CharacterID")) {           
-  //         lines.append(row_3.getString("MovieLine"));           
-  //       }
-  //       character.setJSONArray("lines", lines);
-  //       movie.setJSONObject("characters", character);
-  //     }     
-  //  }
-  // movie_data.append(movie); // add the movie object to the array
-  // break;
-  //}
+  // get the user selection for movie name from a UiBooster selection dialog
+  String movie_name = new UiBooster().showSelectionDialog("Choose a movie", "Choose a movie", movie_names); 
+  // get the id for the movie
+  String movie_id = movie_list.findRow(movie_name, "MovieName").getString("MovieID"); 
   
+  // StringList type is necessary for hasValue() method of finding duplicates
+  characters = new StringList();
+  characters_duplicates = new StringList(); 
+  for (TableRow row : movie_lines.findRows(movie_id, "MovieID")) characters_duplicates.append(row.getString("CharacterName")); // get all the characters from rows that match the movie_id
+  for (String character : characters_duplicates) if (!characters.hasValue(character)) characters.append(character); // add characters to a new list excluding duplicates
   
-  //saveJSONArray(movie_data, "movie_data.json");
+  // transfer StringList elements to ArrayList. ArrayList is necessary for selection dialog
+  characters_array = new ArrayList<>();
+  for (String character : characters) characters_array.add(character); 
+  
+  // get the user selection for character
+  String character_name = new UiBooster().showSelectionDialog("Choose a character", "Choose a character", characters_array); 
+  
+  lines = new ArrayList<>();
+  // add all the lines that match the character name and movieID
+  for (TableRow row : movie_lines.findRows(character_name, "CharacterName")) if (row.getString("MovieID").equals(movie_id)) lines.add(row.getString("MovieLine")); 
+ 
+  // declare ints for counting words
+  int total_lines = lines.size();;
+  int total_words = 0;
+  int lines_with_prp = 0;
+  int total_prp = 0;
+  
+  // loop through all the lines
+  for (String line : lines) { 
+    // create a string array of word codes
+    String[] parts_of_speech = RiTa.pos(line); 
     
+    // add all codes to a StringList for hasValue() method
+    StringList pos_list = new StringList();
+    for (String pos : parts_of_speech) pos_list.append(pos);
+    
+    // count lines that contain a personal pronoun code
+    if (pos_list.hasValue("prp")) {
+     lines_with_prp += 1; 
+     for (String pos : pos_list) if (pos.equals("prp")) total_prp += 1; // count individual personal pronoun codes
+     for (String pos : pos_list) total_words += 1; // count all words
+    }    
+  }
+ // use of ternary expressions to avoid dividing by 0
+ float lines_percentage = lines_with_prp > 0 ? float(lines_with_prp)/float(total_lines) * 100.0 : 0.0;
+ float words_percentage = total_prp > 0 ? float(total_prp)/float(total_words) * 100.0 : 0.0;
+ 
+ // Build a string for displaying the results
+ String info_string = "";
+ info_string = String.format("Movie name: %s\nCharacter name: %s\nTotal character lines: %d\nLines with personal pronouns: %d  (%2.2f%%)\nTotal number of words: %d\nTotal number of personal pronouns: %d  (%2.2f%%)", movie_name, character_name, total_lines, lines_with_prp, lines_percentage, total_words, total_prp, words_percentage);
+ 
+ // Display result in UiBooster info dialog
+ UiBooster result = new UiBooster();
+ result.showInfoDialog(info_string);
 }
   
-  
- // int random_line = int(random(0, movie_lines.getRowCount()));
- // String the_line = movie_lines.getRow(random_line).getString("MovieLine");
-  
-  //String [] parts of_speech = RiTa.pos(the_line); 
-
-  //println("Movie Line:");
-  //println(the_line);
-  //println(parts_of_speech);
-    
- // gui.createForm("Movie Dialogue Browser")
- //   .addSelection("Movie Title", movie_titles)
- //   .show();
